@@ -7,4 +7,4 @@ It is starting out as the rawest of raw ports, with just a text UI that can run 
 
 Screenshot
 ----------
-![Awesome screenshot - you have to see it to believe it!](https://github.com/david-schmidt/AII2048/blob/master/src/doc/img/Game.png )
+![Awesome screenshot - you have to see it to believe it!](https://raw.githubusercontent.com/david-schmidt/AII2048/master/src/doc/img/Game.png )
