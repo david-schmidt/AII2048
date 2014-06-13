@@ -2,6 +2,10 @@
 	.importzp CellTable, GameState, RestartLatch, P0ScoreBCD, P1ScoreBCD
 	.export READ_CHAR, DisplayBoard, InitScreen, DisplayGameOverMsg, DisplayWonMsg
 
+;
+; Minimalist display
+;
+
 DisplayBoard:
 ; Home cursor
 	lda #$06
