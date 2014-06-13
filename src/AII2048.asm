@@ -1,6 +1,6 @@
 .export CellTable, GameState
 .exportzp RestartLatch, P0ScoreBCD, P1ScoreBCD
-.import READ_CHAR, PRBYTE, DisplayBoard, DisplayState, InitScreen, VTAB, DisplayGameOverMsg
+.import READ_CHAR, PRBYTE, DisplayBoard, DisplayState, InitScreen, VTAB, DisplayGameOverMsg, DisplayWonMsg
 
 ;
 ; 2048 2600
@@ -657,6 +657,7 @@ DoneCounterManagement:
 	lda Party2048Counter
 	bne NoParty                   ; Already had a party
 	inc Party2048Counter          ; Let's party!
+	jsr DisplayWonMsg
 NoParty:
 
 
