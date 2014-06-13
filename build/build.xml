@@ -1,0 +1,119 @@
+<?xml version="1.0" encoding="UTF-8"?>
+
+<project name="AII2048" default="all" basedir="..">
+	<property name="projdir" value="${basedir}" />
+	<property name="builddir" value="${basedir}/build" />
+	<property name="distName" value="AII2048" />
+	<property name="diskName" value="AII2048" />
+	<property name="volName" value="AII2048" />
+	<property file="${builddir}/AII2048.properties"/>
+	<property file="${builddir}/AII2048-default.properties"/>
+	<property name="acJarVersion" value="1.3.5.13-ac" />
+	<property name="acJarPath" value="${builddir}/lib/AppleCommander" />
+	<property name="acJar" value="AppleCommander-${acJarVersion}.jar" />
+	<taskdef name="appleCommander" classname="com.webcodepro.applecommander.ui.AntTask" classpath="${projdir};${acJarPath}/${acJar}"/>
+	<echo message="${distName} building on ${os.name}."/>
+	<condition property="isOSX">
+		<os name="Mac OS X"/>
+	</condition>
+
+	<target name="all" depends="prodos, sos" description="Scorched-Earth Build From Source" >
+	</target>
+
+	<!--
+	============================================================================================
+	ProDOS section
+	============================================================================================
+	-->
+	<target name="prodos" depends="prodos-AII2048-image-prep, common" description="Orchestrate Overall Build for ProDOS" >
+		<echo message="Assembling ProDOS code..."/>
+		<exec dir="${projdir}/src" executable="${assemblerPath}/ca65" failonerror="true">
+			<arg line="-t none -I . -l prodos/prodossupport.asm" />
+		</exec>
+		<echo message="Linking ProDOS AII2048..."/>
+		<exec dir="${projdir}/src" executable="${assemblerPath}/ld65" failonerror="true">
+			<arg line="-o AII2048.SYSTEM -m AII2048.map -C prodos/AII2048.cfg AII2048.o prodos/prodossupport.o" />
+		</exec>
+		<echo message="Copying AII2048 to disk image..."/>
+		<appleCommander command="p" input="${projdir}/src/AII2048.SYSTEM" imagename="${builddir}/${distName}/disks/${diskName}.DSK" filename="AII2048.SYSTEM" type="sys" address="8192"/>
+		<delete file="${projdir}/src/AII2048.SYSTEM"/>
+	</target>
+
+	<target name="prodos-AII2048-image-prep" description="Start Empty ProDOS Disk Image">
+		<!--
+		Start Empty ProDOS disk images containing the release number
+		-->
+		<echo message="Prepping ProDOS disk images..."/>
+		<delete file="${builddir}/${distName}/disks/${diskName}.DSK"/>
+		<copy file="${builddir}/AII2048Base.dsk" tofile="${builddir}/${distName}/disks/${diskName}.DSK" />
+		<appleCommander command="n" imagename="${builddir}/${distName}/disks/${diskName}.DSK" volname="${volName}"/>
+	</target>
+
+	<!--
+	============================================================================================
+	SOS section
+	============================================================================================
+	-->
+	<target name="sos" depends="prodos-AII2048-image-prep, common" description="Orchestrate Overall Client Build for SOS" >
+		<echo message="Assembling SOS code..."/>
+		<exec dir="${projdir}/src" executable="${assemblerPath}/ca65" failonerror="true">
+			<arg line="-t none -I . -l sos/sossupport.asm" />
+		</exec>
+		<exec dir="${projdir}/src" executable="${assemblerPath}/ca65" failonerror="true">
+			<arg line="-t none -I . -l sos/rawio.asm" />
+		</exec>
+		<exec dir="${projdir}/src" executable="${assemblerPath}/ca65" failonerror="true">
+			<arg line="-t none -I . -l sos/interp.asm" />
+		</exec>
+		<exec dir="${projdir}/src" executable="${assemblerPath}/ca65" failonerror="true">
+			<arg line="-t none -I . -l sos/asmend.asm" />
+		</exec>
+		<echo message="Linking SOS AII2048..."/>
+		<exec dir="${projdir}/src" executable="${assemblerPath}/ld65" failonerror="true">
+			<arg line="-o SOS.INTERP -m sos/AII2048.map -C sos/AII2048.cfg sos/interp.o AII2048.o sos/sossupport.o sos/rawio.o sos/asmend.o" />
+		</exec>
+		<echo message="Copying SOS.INTERP to disk image..."/>
+		<appleCommander command="p" input="${projdir}/src/SOS.INTERP" imagename="${builddir}/${distName}/disks/${diskName}.DSK" filename="SOS.INTERP" type="sos" address="0000"/>
+		<delete file="${projdir}/src/SOS.INTERP"/>
+	</target>
+
+	<!--
+	============================================================================================
+	Common section
+	============================================================================================
+	-->
+	<target name="common" description="Code common to all architectures">
+		<echo message="Assembling common AII2048..."/>
+		<exec dir="${projdir}/src" executable="${assemblerPath}/ca65" failonerror="true">
+			<arg line="-t none -I . -l AII2048.asm" />
+		</exec>
+	</target>
+	<!--
+	============================================================================================
+	Cleanup section
+	============================================================================================
+	-->
+	<target name="clean" depends="wipe" description="Delete Generated Resources" >
+		<!--
+		Clean up everything
+		-->
+		<delete file="${projdir}/client/src/messages.asm" />
+		<delete file="${builddir}/${distName}.tar.gz" />
+		<delete file="${builddir}/${distName}.zip" />
+		<delete file="${builddir}/${distName}.dmg" />
+		<delete file="${builddir}/${distName}/disks/${diskName}.DSK" />
+		<delete>
+			<fileset dir="${projdir}/src" includes="**/*.o"/>
+			<fileset dir="${projdir}/src" includes="**/*.map"/>
+			<fileset dir="${projdir}/src" includes="**/*.lst"/>
+			<fileset dir="${projdir}/src" includes="**/*.lib"/>
+		</delete>
+	</target>
+	<target name="wipe" description="Delete the Distribution Directory" >
+		<!--
+		Really, really clean up everything
+		-->
+		<delete dir="${builddir}/${distName}" />
+	</target>
+
+</project>
