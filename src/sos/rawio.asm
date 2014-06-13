@@ -18,7 +18,8 @@
 ; 59 Temple Place, Suite 330, Boston, MA 02111-1307 USA
 ;
 
-.export		PRBYTE, COUT, CROUT, HOME, CH, CV, VTAB, SETUP, COL40
+	.export		PRBYTE, COUT, CROUT, HOME, VTAB, SETUP, COL40
+	.exportzp 	CH, CV
 
 KBDATA		:= $57
 LMARGIN		:= $0058

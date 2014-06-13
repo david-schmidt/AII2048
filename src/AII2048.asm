@@ -1,7 +1,6 @@
 .export CellTable, GameState
-.exportzp RestartLatch, P0ScoreBCD
-.import HOME, READ_CHAR, PRBYTE, DisplayBoard, DisplayState, InitScreen, VTAB
-.importzp CH, CV
+.exportzp RestartLatch, P0ScoreBCD, P1ScoreBCD
+.import READ_CHAR, PRBYTE, DisplayBoard, DisplayState, InitScreen, VTAB, DisplayGameOverMsg
 
 ;
 ; 2048 2600
@@ -248,17 +247,6 @@ BackgroundColor    = $00
 TileHeight = 11          ; Tiles have 11 scanlines (and are in graphics.asm)
 GridBottomHeight = 5      ; Doesn't count the ones we use calculating P1's score
 
-GridPF0 = $00            ; Grid sides are always clear, minus last bit
-GridPF1 = $01
-GridPF2Tile  = %10011001 ; Grid has "holes" for numbers
-GridPF2Space = %11111111 ; but is solid between the tiles
-
-PlayerTwoCopiesWide = $02 ; P0 and P1 drawing tiles: 0 1 0 1
-PlayerThreeCopies   = $03 ; P0 and P1 drawing score: 010101
-VerticalDelay       = $01 ; Delays writing of GRP0/GRP1 for 6-digit score
-
-AnimationFrames = 11  ; Time limit for merged tile / new tile animations
-
 JoyUp    = %11100000      ; Masks to test SWCHA for joystick movement
 JoyDown  = %11010000      ; (we'll shift P1's bits into P0s on his turn, so
 JoyLeft  = %10110000      ;  it's ok to use P0 values)
@@ -372,6 +360,9 @@ Initialize:             ; Cleanup routine from macro.h (by Andrew Davie/DASM)
 	sta P0ScoreBCD
 	sta P0ScoreBCD+1
 	sta P0ScoreBCD+2
+	sta P1ScoreBCD
+	sta P1ScoreBCD+1
+	sta P1ScoreBCD+2
 	jsr InitScreen
 
 ;;;;;;;;;;;;;;;
@@ -436,9 +427,6 @@ TitleTiles:
 ;;;;;;;;;;;;;;
 
 StartNewGame:
-;	lda GridColor
-;	sta COLUPF                    ; Show the grid separator
-
 	ldx #LastDataCellOffset       ; Last non-sentinel cell offset
 	lda #CellEmpty
 InitCellTableLoop2Outer:
@@ -470,6 +458,9 @@ LoopResetScore:
 	sta DidMerge2048
 	sta Party2048Counter
 
+; Set up the screen
+	jsr InitScreen
+
 ; Start the game with a random tile
 	lda #AddingRandomTile
 	sta GameState
@@ -479,25 +470,6 @@ LoopResetScore:
 ;;;;;;;;;;;;;;;;;
 
 StartFrame:
-;	jsr DisplayBoard
-;	jsr DisplayState
-
-;	lda #%00000010         ; VSYNC
-;	sta VSYNC
-;	lda #0
-;	sta VSYNC
-;	sta WSYNC
-
-;	ldx #$00
-;	lda #ColSwitchMask     ; VBLANK start
-;	bit SWCHB
-;	bne NoVBlankPALAdjust  ; "Color" => NTSC; "B•W" = PAL
-;	inx                    ; (this ajust will appear a few times in the code)
-;NoVBlankPALAdjust:
-;	lda VBlankTime64T,x
-;	sta TIM64T             ; Use a RIOT timer (with the proper value) instead
-;	lda #0                 ; of counting scanlines (since we only care about
-;	sta VBLANK             ; the overall time)
 
 ;;;;;;;;;;;;;;;;;;;;;
 ;; NEW RANDOM TILE ;;
@@ -678,8 +650,6 @@ ClearMergedBit:
 	lda #TurnIndicatorFrames      ; Show it's his turn
 	sta TurnIndicatorCounter
 ResetAnimationCounter:
-	lda #AnimationFrames          ; Keep this counter initialized
-	sta AnimationCounter          ; for the next animation
 DoneCounterManagement:
 ; Reached first 2048? Let's party!
 	lda DidMerge2048
@@ -785,6 +755,7 @@ EndGameOverDetection:
 	sta AUDV0
 	lda #GameOver
 	sta GameState
+	jsr DisplayGameOverMsg
 EndGameOverEffects:
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;
@@ -809,466 +780,11 @@ EndGameOverEffects:
 ;	sta COLUPF
 DonePartyCheck:
 
-
-;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
-;; OTHER FRAME CONFIGURATION ;;
-;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
-
-	lda #0                       ; First score to show is P0's
-	sta ScoreBeingDrawn          ; (P1 will come after the grid)
-
-;;;;;;;;;;;;;;;;;;;;;;;;;
-;; REMAINDER OF VBLANK ;;
-;;;;;;;;;;;;;;;;;;;;;;;;;
-
-WaitForVBlankEndLoop:
-;	lda INTIM                ; Wait until the timer signals the actual end
-;	bne WaitForVBlankEndLoop ; of the VBLANK period
-
-;	sta WSYNC
-
-;;;;;;;;;;;;;;;;;;;;;;;;;;;
-;; TOP SPACE ABOVE SCORE ;;
-;;;;;;;;;;;;;;;;;;;;;;;;;;;
-
-;	ldx #36
-SpaceAboveLoop:
-;	sta WSYNC
-;	dex
-;	bne SpaceAboveLoop
-;	sta WSYNC
-
-;;;;;;;;;;;;;;;;;
-;; SCORE SETUP ;;
-;;;;;;;;;;;;;;;;;
-
-ScoreSetup:
-; Score setup scanline 1:
-; general configuration
-	lda GameState
-	cmp #TitleScreen
-	bne YesScore             ; No score on title screen
-
-NoScore:
-;	ldx #13
-ScoreSpaceLoop:
-;	sta WSYNC
-;	dex
-;	bne ScoreSpaceLoop
-;	jmp ScoreCleanup
-
-YesScore:
-	lda #0                   ; No players until we start
-;	sta GRP0
-;	sta GRP1
-;	lda ScoreBeingDrawn      ; Copy the proper score to display
-;	bne ReadScoreP1
-ReadScoreP0:
-;	lda P0ScoreBCD
-;	ldx P0ScoreBCD+1
-;	ldy P0ScoreBCD+2
-;	jmp WriteScore
-ReadScoreP1:
-;	lda P1ScoreBCD
-;	ldx P1ScoreBCD+1
-;	ldy P1ScoreBCD+2
-WriteScore:
-;	sta ScoreBCD
-;	stx ScoreBCD+1
-;	sty ScoreBCD+2
-;	sta WSYNC
-
-; Score setup scanlines 2-3:
-; player graphics triplicated and positioned like this: P0 P1 P0 P1 P0 P1
-; also, set their colors
-
-;	lda #PlayerThreeCopies   ; (2)
-;	sta NUSIZ0               ; (3)
-;	sta NUSIZ1               ; (3)
-
-;	lda #VerticalDelay       ; (2) ; Needed for precise timing of GRP0/GRP1
-;	sta VDELP0               ; (3)
-;	sta VDELP1               ; (3)
-
-;	sta RESP0   ; (3)        ; Position P0
-;	sta RESP1   ; (3)        ; Position P1
-;	sta WSYNC
-
-;	lda #$E0                 ; Fine-tune player positions to center on screen
-;	sta HMP0
-;	lda #$F0
-;	sta HMP1
-;	sta WSYNC
-;	sta HMOVE   ; (3)
-
-;	ldx #ScoreColor          ; Animate score for a few seconds when the
-;	lda TurnIndicatorCounter ; turn changes
-;	beq NoTurnAnimation
-;	adc #ScoreColor
-;	tax
-;	dec TurnIndicatorCounter
-NoTurnAnimation:
-;	lda ScoreBeingDrawn      ; If score drawn belongs to the current player,
-;	cmp CurrentPlayer        ; it is always shown as active
-;	beq SetScoreColor
-
-	lda GameState            ; If game is over, always show both scores
-	cmp #GameOver            ; (because P1 is the high score)
-	beq ShowAsInactive
-
-;	ldx CurrentBGColor       ; Get rid of score if not current and on single
-;	lda GameMode             ; player game (in which P0 is always current),
-;	cmp #OnePlayerGame       ; otherwise show as inactive
-;	beq SetScoreColor
-
-ShowAsInactive:
-	ldx #InactiveScoreColor
-SetScoreColor:
-;	stx COLUP0
-;	stx COLUP1
-
-
-; Score setup scanlines 4-5
-; set the graphic pointers for each score digit
-
-;	ldy #2            ; (2)  ; Score byte counter (source)
-;	ldx #10           ; (2)  ; Graphic pointer counter (target)
-;	clc               ; (2)
-
-ScorePtrLoop:
-;	lda ScoreBCD,y    ; (4)
-;	and #$0F          ; (2)  ; Lower nibble
-;	sta TempVar1      ; (3)
-;	asl               ; (2)  ; A = digit x 2
-;	asl               ; (2)  ; A = digit x 4
-;	adc TempVar1      ; (3)  ; 4.digit + digit = 5.digit
-;	adc #<Digits      ; (2)  ; take from the first digit
-;	sta DigitBmpPtr,x ; (4)  ; Store lower nibble graphic
-;	dex               ; (2)
-;	dex               ; (2)
-;
-;	lda ScoreBCD,y    ; (4)
-;	and #$F0          ; (2)
-;	lsr               ; (2)
-;	lsr               ; (2)
-;	lsr               ; (2)
-;	lsr               ; (2)
-;	sta TempVar1      ; (3)  ; Higher nibble
-;	asl               ; (2)  ; A = digit x 2
-;	asl               ; (2)  ; A = digit x 4
-;	adc TempVar1      ; (3)  ; 4.digit + digit = 5.digit
-;	adc #<Digits      ; (2)  ; take from the first digit
-;	sta DigitBmpPtr,x ; (4)  ; store higher nibble graphic
-;	dex               ; (2)
-;	dex               ; (2)
-;	dey               ; (2)
-;	bpl ScorePtrLoop  ; (2*)
-;	sta WSYNC         ;      ; We take less than 2 scanlines, round up
-
-; We may have been drawing the end of the grid (if it's P1 score)
-	lda #0
-;	sta PF0
-;	sta PF1
-;	sta PF2
-
-;;;;;;;;;;;
-;; SCORE ;;
-;;;;;;;;;;;
-
-;	ldy #4                   ; 5 scanlines
-;	sty LineCounter
-DrawScoreLoop:
-;	ldy LineCounter          ; 6-digit loop is heavily inspired on Berzerk's
-;	lda (DigitBmpPtr),y
-;	sta GRP0
-;	sta WSYNC
-;	lda (DigitBmpPtr+2),y
-;	sta GRP1
-;	lda (DigitBmpPtr+4),y
-;	sta GRP0
-;	lda (DigitBmpPtr+6),y
-;	sta TempDigitBmp
-;	lda (DigitBmpPtr+8),y
-;	tax
-;	lda (DigitBmpPtr+10),y
-;	tay
-;	lda TempDigitBmp
-;	sta GRP1
-;	stx GRP0
-;	sty GRP1
-;	sta GRP0
-;	dec LineCounter
-;	bpl DrawScoreLoop
-
-ScoreCleanup:                ; 1 scanline
-;	lda #0
-;	sta VDELP0
-;	sta VDELP1
-;	sta GRP0
-;	sta GRP1
-;	sta WSYNC
-
-	lda ScoreBeingDrawn
-	beq GridSetup           ; If showing P0 score, the grid follows,
-	jmp FrameBottomSpace    ; otherwise, we're done with the frame
-
-;;;;;;;;;;;;;;;;
-;; GRID SETUP ;;
-;;;;;;;;;;;;;;;;
-
-GridSetup:
-; Separator scanline 1:
-; configure grid playfield
-;	lda #GridPF0
-;	sta PF0
-;	lda #GridPF1
-;	sta PF1
-;	lda #GridPF2Space        ; Space between rows
-;	sta PF2
-
-; point cell cursor to the first data cell
-	lda #FirstDataCellOffset
-	sta CellCursor
-
-;	sta WSYNC
-
-; Separator scanlines 2-4:
-; player graphics duplicated and positioned like this: P0 P1 P0 P1
-
-;	lda #PlayerTwoCopiesWide ; (2)
-;	sta NUSIZ0               ; (3)
-;	sta NUSIZ1               ; (3)
-
-;	sta RESP0   ; (3)
-
-;	bit $80     ; (3)        ; and P1 close to the beginning of the second
-;	sta RESP1   ; (3)
-;	sta WSYNC
-
-;	lda #$F0                 ; Fine-tune player positions to fill the grid
-;	sta HMP0
-;	lda #$10
-;	sta HMP1
-;	sta WSYNC
-;	sta HMOVE
-;	sta WSYNC
-
-; Separator scanlines 5-8:
-; point graphic pointers' LSBs to the next 4 tiles
-
-GridRowPreparation:
-	lda #0
-	ldy #0             ; (2)   ; Y = column (*2) counter
-
-UpdateTileBitmapAddressLoop:
-	ldx CellCursor       ; (3)
-	lda CellTable,x      ; (4) ; A = current grid cell value.
-	ldx #0
-	cmp #MergedMask
-	bcc MultiplyBy11
-	and #ClearMergedMask ; (2) ; Clear the merged bit
-	ldx AnimationCounter
-
-MultiplyBy11:
-	stx AnimationDelta
-	; We need to multiply the value ("n") by 11 (TileHeight).
-	sta TempVar1       ; (3)   ; TempVar1 = value
-
-	asl                ; (2)
-	asl                ; (2)
-	asl                ; (2)
-	sta TempVar2       ; (3)   ; TempVar2 = 8*value
-
-	clc                ; (2)
-	lda TempVar1       ; (3)
-	adc TempVar1       ; (2)
-	adc TempVar1       ; (2)   ; A = 3*value
-	adc TempVar2       ; (2)   ; A = 3*value + 8*value = 11*value
-	sec
-	sbc AnimationDelta ; (2)   ; If animating, scroll to the new value
-
-MultiplicationDone:
- ;   sta TileBmpPtr,y   ; (5)   ; Store LSB (MSB is fixed)
-
- ;   iny                ; (2)
- ;   iny                ; (2)
- ;   inc CellCursor     ; (5)
- ;   sta WSYNC
- ;   cpy #8             ; (2)
- ;   bne UpdateTileBitmapAddressLoop ; (2 in branch fail)
-
-; Separator scanlines 9-10
-; Set tile colors according to their values
-; (or, in title screen, according to the position)
-
-;	ldx CellCursor
-;	lda GameState
-;	cmp #TitleScreen
-;	bne ColorsFromValues          ; Not in title screen => tile values
-;	cpx #FirstDataCellOffset+19
-;	bpl FixedColors               ; Title 4th     row => fixed values
-;	cpx #FirstDataCellOffset+12
-;	bpl ColorsFromValues          ; Title 3rd     row => tile values (=0)
-ColorsFromRainbow:                ; Title 1st/2nd row => rainbow
-;	lda RandomNumber
-;	sta RowTileColor
-;	adc #10
-;	adc CellCursor
-;	sta RowTileColor+1
-;	adc #10
-;	adc CellCursor
-;	sta RowTileColor+2
-;	adc #10
-;	adc CellCursor
-;	sta RowTileColor+3
-;	sta WSYNC
-;	jmp DoneWithColors
-FixedColors:
-;	sta WSYNC
-;	lda #BackgroundColor
-;	sta RowTileColor
-;	sta RowTileColor+1
-;	lda #ScoreColor
-;	sta RowTileColor+2
-;	sta RowTileColor+3
-;	ldx #3
-PositionChesterTilesLoop:
-;	nop
-;	dex
-;	bne PositionChesterTilesLoop
-;	sta RESP0
-;	jmp DoneWithColors
-ColorsFromValues:
-;	ldy #3
-SetColorLoop:
-;	dex
-;	lda CellTable,x      ; A = current cell value.
-;	asl
-;	asl
-;	asl
-;	asl
-;	beq StoreColor
-;	adc #8               ; If not empty, add some luminance
-StoreColor:
-;	sta RowTileColor,y   ; Y = current color table offset
-;	dey
-;	bpl SetColorLoop
-DoneWithColors:
-;	sta WSYNC
-
-; Last separator scanline:
-; change playfield (after the beam draws the last separator one)
-; and initialize counter
-
-;	ldx RowTileColor+3        ; (3)  ; Will be used on grid row
-;	txs                       ; (2)  ; to save a cycle
-
-;	ldy #9                    ; (2)  ; Wait till beam is past the board
-LastSeparatorLineLoop:
-;	dey                       ; (2)
-;	bne LastSeparatorLineLoop ; (2*) (3 except last)
-
-;	ldy #TileHeight-1  ; (2)   ; Initialize tile scanline counter
-	                           ; (goes downwards and is zero-based)
-
-;	lda #GridPF2Tile   ; (2)   ; Change to the "tile" playfield
-;	sta PF2            ; (3)
-
-	; no STA wsync (will do it in the grid row loop)
-
-;;;;;;;;;;;;;;
-;; GRID ROW ;;
-;;;;;;;;;;;;;;
-
-RowScanline:
-;	ldx RowTileColor+2    ; (3)
-;	lda RowTileColor      ; (3)
-;	sta COLUP0            ; (3)
-;	sta WSYNC             ; (3)
-;	lda RowTileColor+1    ; (3)
-;	sta COLUP1            ; (3)
-;	lda (TileBmpPtr+6),y  ; (5)
-;	sta TempVar1          ; (3)
-;	nop                   ; (2)
-;	nop                   ; (2)
-;	lda (TileBmpPtr),y    ; (5)
-;	sta GRP0              ; (3)
-;	lda (TileBmpPtr+2),y  ; (5)
-;	sta GRP1              ; (3)
-;	lda (TileBmpPtr+4),y  ; (5)
-;	sta GRP0              ; (3)
-;	lda TempVar1          ; (3)
-;	stx COLUP0            ; (3)
-;	sta GRP1              ; (3)
-;	tsx                   ; (2)
-;	stx COLUP1            ; (3)
-;	dey                   ; (2)
-;	bpl RowScanline       ; (2*)
-;	sta WSYNC
-
-; Go to the next row of tiles (or finish grid)
-;	lda #0                   ; Disable player (tile) graphics
-;	sta GRP0
-;	sta GRP1
-;	lda #GridPF2Space        ; and return to the "separator" playfield
-;	sta PF2
-
-;	inc CellCursor           ; Advance cursor (past the side sentinel)
-;	ldx CellCursor           ; and get its value
-;	lda CellTable,x
-
-;	cmp #CellSentinel        ; If it's a sentinel, move on
-;	beq FinishGrid
-
-;	sta WSYNC                ; otherwise just skip the setup and prepare
-;	sta WSYNC                ; another batch of tiles to display
-;	sta WSYNC
-;	jmp GridRowPreparation
-
-FinishGrid:
-;	ldx #GridBottomHeight    ; We'll draw a part of the last separator here;
-DrawBottomSeparatorLoop:     ; the remainder will be drawn during P1 score
-;	sta WSYNC                ; calculation
-;	dex
-;	bne DrawBottomSeparatorLoop
-
-;	inc ScoreBeingDrawn      ; Display score for P1 (even if invisible)
-;	jmp ScoreSetup
-
-
-;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
-;; BOTTOM SPACE BELOW GRID ;;
-;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
-
-FrameBottomSpace:
-;	ldx #36
-SpaceBelowGridLoop:
-;	sta WSYNC
-;	dex
-;	bne SpaceBelowGridLoop
-
-;;;;;;;;;;;;;;
-;; OVERSCAN ;;
-;;;;;;;;;;;;;;
-
-;	lda #%01000010           ; Disable output
-;	sta VBLANK
-;	ldx #$00
-;	lda #ColSwitchMask
-;	bit SWCHB
-;	bne NoOverscanPALAdjust
-;	inx
-NoOverscanPALAdjust:
-;	lda OverscanTime64T,x    ; Use a timer adjusted to the color system's TV
-;	sta TIM64T               ; timings to end Overscan, same as VBLANK
-
 ;;;;;;;;;;;;;;;;;;;;
 ;; INPUT CHECKING ;;
 ;;;;;;;;;;;;;;;;;;;;
 
 ; Joystick
-;	lda SWCHA
-	jsr DisplayState
 	jsr READ_CHAR
 
 VerifyGameStateForJoyCheck:

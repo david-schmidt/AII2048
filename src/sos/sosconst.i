@@ -18,8 +18,9 @@
 ; 59 Temple Place, Suite 330, Boston, MA 02111-1307 USA
 ;
 
-.include "applechr.i"		; ASCII string productions
-.include "const.i"		; ProDOS/SOS, CHR equates
+	.include "applechr.i"		; ASCII string productions
+	.include "const.i"		; ProDOS/SOS, CHR equates
+	.importzp 	CH, CV
 
 ;---------------------------------------------------------
 ; Horizontal tabs for volume display

@@ -21,7 +21,8 @@
 .include "applechr.i"		; ASCII string productions
 .include "const.i"
 
-.export DELAY, HOME, PRBYTE, CH, CV, VTAB
+.export DELAY, HOME, PRBYTE, VTAB
+.exportzp CH, CV
 
 ;---------------------------------------------------------
 ; Zero page locations (all unused by ProDOS,
